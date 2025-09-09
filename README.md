@@ -76,3 +76,47 @@ Notes and troubleshooting
 - If the MPU6050 is not responding, check I2C wiring (SDA, SCL, GND, VCC) and power rails.
 - The firmware is intentionally minimal: complex sensor fusion or filtering is performed in the
 	Python frontend for flexibility during visualization and experimentation.
+
+Annotated I2C code excerpt (from `main/main.c`)
+--------------------------------------------
+Below are the key ESP-IDF I2C calls used by the firmware with short notes. See `main/main.c`
+for the full implementation.
+
+```c
+// configure and install I2C master driver
+esp_err_t i2c_master_init(void)
+{
+		i2c_config_t conf = { .mode = I2C_MODE_MASTER, /* sda/scl pins, pullups, clk speed */ };
+		i2c_param_config(I2C_MASTER_NUM, &conf);
+		return i2c_driver_install(I2C_MASTER_NUM, conf.mode, 0, 0, 0);
+}
+
+// wake MPU6050 by writing 0x00 to PWR_MGMT_1 (0x6B)
+esp_err_t mpu6050_init(void)
+{
+		uint8_t data[2] = { MPU6050_PWR_MGMT_1, 0x00 };
+		// i2c_master_write_to_device sends the address+data as a single write
+		return i2c_master_write_to_device(I2C_MASTER_NUM, MPU6050_ADDR, data, sizeof(data), 100 / portTICK_PERIOD_MS);
+}
+
+// read 14 bytes starting at ACCEL_XOUT_H (0x3B) with a single combined write-then-read
+esp_err_t mpu6050_read(mpu6050_data_t *out)
+{
+		uint8_t reg = MPU6050_ACCEL_XOUT_H;
+		uint8_t buf[14];
+		// i2c_master_write_read_device does a write of the register offset, then a read of N bytes
+		esp_err_t ret = i2c_master_write_read_device(I2C_MASTER_NUM, MPU6050_ADDR, &reg, 1, buf, sizeof(buf), 100 / portTICK_PERIOD_MS);
+		if (ret != ESP_OK) return ret;
+		// convert big-endian pairs to signed 16-bit values
+		out->accel_x = (int16_t)((buf[0] << 8) | buf[1]);
+		... // rest of conversion
+		return ESP_OK;
+}
+```
+
+Notes:
+- `i2c_master_write_to_device` is used for simple register writes (initialization).
+- `i2c_master_write_read_device` is convenient for register pointer + burst reads and is used
+	here to fetch accel/gyro/temp in one transaction.
+- Timeout values and retries are set via the last parameter (portTICK_PERIOD_MS) and should be
+	adjusted for noisy buses or slow peripherals.
