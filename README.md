@@ -120,3 +120,55 @@ Notes:
 	here to fetch accel/gyro/temp in one transaction.
 - Timeout values and retries are set via the last parameter (portTICK_PERIOD_MS) and should be
 	adjusted for noisy buses or slow peripherals.
+
+MPU6050 quick register map
+--------------------------
+The firmware reads and configures a small set of MPU6050 registers. Below are the most
+commonly used registers (hex addresses) and short descriptions — consult the MPU-6000/MPU-6050
+Register Map & Descriptions document for the full details.
+
+- WHO_AM_I (0x75)
+	- Returns 0x68 (device ID) for the MPU6050 when AD0=0.
+
+- PWR_MGMT_1 (0x6B)
+	- Power management and clock source. Important bits:
+		- bit 7: DEVICE_RESET (write 1 to reset)
+		- bit 6: SLEEP (1 = sleep, 0 = wake)
+		- bits 2:0: CLKSEL (clock source selection)
+	- Typical init: write 0x00 to clear SLEEP and wake the device.
+
+- SMPLRT_DIV (0x19)
+	- Sample rate divider. Effective sample rate = GyroOutputRate / (1 + SMPLRT_DIV).
+		GyroOutputRate is 8 kHz or 1 kHz depending on DLPF settings — see datasheet.
+
+- CONFIG (0x1A)
+	- DLPF_CFG (bits 2:0) sets the digital low-pass filter bandwidth and affects internal
+		sampling rate source (1 kHz vs 8 kHz behavior).
+
+- GYRO_CONFIG (0x1B)
+	- Gyro full-scale range selection (FS_SEL in bits 4:3):
+		- 0x00 = ±250 °/s
+		- 0x08 = ±500 °/s
+		- 0x10 = ±1000 °/s
+		- 0x18 = ±2000 °/s
+
+- ACCEL_CONFIG (0x1C)
+	- Accel full-scale range (AFS_SEL in bits 4:3):
+		- 0x00 = ±2 g
+		- 0x08 = ±4 g
+		- 0x10 = ±8 g
+		- 0x18 = ±16 g
+
+- ACCEL_XOUT_H (0x3B) — start of the sensor data block
+	- The firmware performs a 14-byte burst read from 0x3B, which returns in order:
+		ACCEL_XOUT_H/L, ACCEL_YOUT_H/L, ACCEL_ZOUT_H/L,
+		TEMP_OUT_H/L,
+		GYRO_XOUT_H/L, GYRO_YOUT_H/L, GYRO_ZOUT_H/L
+	- Each pair (H,L) is a big-endian two's-complement 16-bit sample.
+
+Additional registers you may encounter:
+- INT_ENABLE (0x38) — interrupt enable bits
+- SIGNAL_PATH_RESET (0x68) — clears sensor signal paths
+
+For complete details and the exact bit fields consult the official datasheet / register map:
+https://www.invensense.com/wp-content/uploads/2015/02/MPU-6000-Register-Map1.pdf
